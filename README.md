@@ -1,6 +1,6 @@
 
 # Kaia
-![kaia.png](kaia.png)
+![kaia.png](kaia.png | =250x250)
 Kaia is a Kubernetes AI Agent based on Autogen 0.4 AgentChat
 
 ## Features
