@@ -7,3 +7,7 @@ def call_kubectl(command: str) -> str:
     if command.split()[0] != 'kubectl':
         command = 'kubectl ' + command
     return (subprocess.check_output(command.split()))
+
+def call_shell(command: str) -> str:
+    """Call generic shell command """
+    return (subprocess.check_output(command.split()))
