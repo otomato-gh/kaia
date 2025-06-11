@@ -165,10 +165,48 @@ Enter your Kubernetes request: Thanks!
 ```
 kaia/
 ├── kaia.py              # Main application
+├── tests.py             # Comprehensive test suite
+├── run_tests.py         # Test runner script
+├── pytest.ini          # Pytest configuration
 ├── requirements.txt     # Python dependencies
 ├── README.md           # This file
 └── kaia.png           # Logo
 ```
+
+### Running Tests
+
+```bash
+# Install test dependencies (included in requirements.txt)
+pip install -r requirements.txt
+
+# Run all tests
+python run_tests.py
+
+# Run tests with verbose output
+python run_tests.py --verbose
+
+# Run tests with coverage report
+python run_tests.py --coverage
+
+# Run specific test categories
+python run_tests.py --unit        # Unit tests only
+python run_tests.py --integration # Integration tests only
+
+# Or use pytest directly
+pytest tests.py -v
+pytest tests.py --cov=kaia --cov-report=html
+```
+
+### Test Coverage
+
+The test suite covers:
+- ✅ **Argument Parsing**: Command line argument validation and defaults
+- ✅ **Environment Setup**: Provider-specific environment variable configuration
+- ✅ **Model Creation**: All three providers (Ollama, Gemini, GitHub)
+- ✅ **Error Handling**: Invalid providers, missing tokens, malformed inputs
+- ✅ **Integration**: End-to-end provider setup and model initialization
+- ✅ **Validator Function**: Kubernetes response validation and retry logic
+- ✅ **MCP Server Configuration**: Docker container setup and volume mounting
 
 ### Contributing
 1. Fork the repository
