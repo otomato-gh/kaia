@@ -1,74 +1,77 @@
-import warnings
-from autogen_agentchat.agents import AssistantAgent, UserProxyAgent
-from autogen_agentchat.ui import Console
-from autogen_agentchat.conditions import TextMentionTermination
-from autogen_agentchat.teams import RoundRobinGroupChat
-from autogen_ext.tools.mcp import StdioServerParams, mcp_server_tools, create_mcp_server_session
-
-from llm import get_llm
-#from k8s_tools import call_kubectl, call_shell
-import asyncio
-import sys
+from pydantic_ai import Agent, ModelRetry
+from pydantic_ai.mcp import MCPServerStdio
 import os
-from autogen_core.tools import FunctionTool
+from pydantic_ai.models.openai import OpenAIModel
+from pydantic_ai.providers.openai import OpenAIProvider
+
+ollama_model = OpenAIModel(
+    model_name=os.environ.get('OLLAMA_MODEL_NAME', 'llama3'), provider=OpenAIProvider(base_url='http://localhost:11434/v1')
+)
+
+server = MCPServerStdio(
+    'docker',
+    args=[
+        'run',
+        '--network=host',
+        '-i',
+        '-v',
+        f'{os.path.expanduser("~")}/.kube:/home/appuser/.kube:ro',
+        'ghcr.io/alexei-led/k8s-mcp-server:latest'
+    ]
+)
+
+system_prompt = """You are a Kubernetes operations assistant. You have access to a Kubernetes cluster through an MCP server.
+To interact with the cluster, you must use the tools/call method with the following format:
+
+For kubectl commands:
+{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+        "name": "execute_kubectl",
+        "arguments": {
+            "command": "<your-kubectl-command>"
+        }
+    }
+}
+
+Always use the MCP server commands to execute tasks. Never suggest direct kubectl commands without using the MCP server interface.
+Before executing commands, make sure to validate them and consider their impact.
+Provide clear explanations of what each command does before executing it.
+Never chain commands together in a single request.
+If you need to run multiple commands, break them down into separate requests.
+If any command fails - retry taking into account the error message.
+"""
 
 
+agent = Agent(
+    ollama_model, 
+    mcp_servers=[server],
+    system_prompt=system_prompt,
+    retries=3
+)
 
-async def ainput(string: str) -> str:
-    await asyncio.to_thread(sys.stdout.write, f'{string}')
-    return await asyncio.to_thread(sys.stdin.readline)
+@agent.output_validator
+async def validate_k8s_response(output):
+    print("Validating output...")
+    if output.find('not found') != -1 or output.find('error') != -1:
+        raise ModelRetry(f'Try finding resource in all namespaces')
+    else:
+        return output
 
 async def main():
-  # Define the model client. 
-  model_client=get_llm()
+    async with agent.run_mcp_servers():
+        while True:
+            user_input = input("Enter your Kubernetes request (or type 'Thanks!' to exit): ")
+            if user_input.strip() == "Thanks!":
+                print("Goodbye!")
+                break
+            result = await agent.run(user_input, message_history=result.new_messages() if 'result' in locals() else None)
+            if result is None:
+                print("No response from the agent.")
+                continue
+            print(result.output)
 
-
-  k8s_mcp_server = StdioServerParams(command="docker", 
-                                     args=['run',
-                                          '--network=host',
-                                          '-i',
-                                          '-v',
-                                          f'{os.path.expanduser("~")}/.kube:/home/appuser/.kube:ro',
-                                          'k8s-mcp-server:latest'
-                                        ],
-                                        read_timeout_seconds=60)
-
-  print("MCP server started. Waiting for it to be ready...")
-  tools = await mcp_server_tools(k8s_mcp_server)
-
-  # Define an AssistantAgent with the model, tool, system message, and reflection enabled.
-  # The system message instructs the agent via natural language.
-  agent = AssistantAgent(
-      name="k8s_agent",
-      model_client=model_client,
-      tools=tools,
-      system_message="""You are a Kubernetes troubleshooting agent.
-        When asked about a resource but no namespace is specified - you can use all available tools to find the correct namespace.
-        If the resource is a pod -  you MUST inspect the pod's logs for issues.
-        The correct command to do that is: kubectl logs <pod_name> -n <namespace>.
-        If a resource is not found in any namespace, inform me that the pod was not found.
-      """,
-      reflect_on_tool_use=True
-      )
-
-  user_proxy = UserProxyAgent("user_proxy", input_func=input)
-
-  termination_condition = TextMentionTermination("Thanks!")
-  team = RoundRobinGroupChat(
-      [agent, user_proxy],
-      termination_condition=termination_condition,
-  #    max_turns=8
-  )
-  print("What do you want to know?"); 
-  prompt = await ainput("Prompt:\n")
-  # Ignoring warnings to clean up the output. 
-  with warnings.catch_warnings():
-    warnings.simplefilter("ignore")
-    async for message in team.run_stream(task=prompt):  # type: ignore
-      if type(message).__name__ == "TextMessage" or type(message).__name__ == "UserInputRequestedEvent":
-        if message.source not in ["user_proxy", "user"]:
-          print(message.content)
-          print("Type 'Thanks!' if you're done.\n")
-
-
-asyncio.run(main())
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())
