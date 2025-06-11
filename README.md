@@ -3,6 +3,8 @@
 
 Kaia is an intelligent Kubernetes Operations Assistant built with [pydantic-ai](https://ai.pydantic.dev/) that provides safe and expert-level Kubernetes cluster management through natural language interactions.
 
+(If you're looking for the previous version of Kaia based on AutoGen 0.4 and function calls - go to [autogen](https://github.com/otomato-gh/kaia/tree/autogen) branch)
+
 ## Overview
 
 Kaia serves as your AI-powered DevOps companion, offering:
